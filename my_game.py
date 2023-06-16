@@ -1,7 +1,10 @@
 import pygame
 from sys import exit
-from random import randint
-
+from random import randint, choice
+from player import Player
+from obstacle import Obstacle
+from background import Background
+from missile import Missile
 import pygame
 
 WIDTH, HEIGHT = 800, 600
@@ -34,25 +37,26 @@ def display_end(current_score):
     screen.blit(gameover_surf, gameover_rect)
     screen.blit(cont_surf, cont_rect)
 
-def obstable_movment(obstacle_list, surf, step):
-    """ Move the enemey list """
-    if obstacle_list:
-        for obstacle_rect in obstacle_list:
-            obstacle_rect.x -= step
-            screen.blit(surf, obstacle_rect)
-        # Copy only rect that are in the screen
-        obstacle_list = [obstacle for obstacle in obstacle_list if 1300 >= obstacle.x >= -300]
-        return obstacle_list
+def collision_sprite():
+    player_collision = pygame.sprite.spritecollide(player.sprite, obstacle_group, False)
+    missile_collisions = pygame.sprite.groupcollide(missile_group, obstacle_group, False, False)
+
+    if player_collision:
+        obstacle_group.empty()
+        return False
+    # Check for missile-obstacle collision
+    elif missile_collisions:
+        for missile in missile_collisions:
+            if pygame.sprite.spritecollide(missile, obstacle_group, False):
+                missile.kill()
+        for obstacle in missile_collisions.values():
+            obstacle_group.remove(*obstacle)
+        return True
+
     else:
-        return []
+        return True
 
-def collisions(player, obstacles):
-    if obstacles:
-        for obstacle_rect in obstacles:
-            if player.colliderect(obstacle_rect):
-                return False
-    return True
-
+# Init pygame
 pygame.init()
 
 # Init the screen
@@ -60,61 +64,47 @@ width = 800
 height = 480
 screen = pygame.display.set_mode((width, height))
 pygame.display.set_caption("Very Cool Game")
+text_font = pygame.font.Font('fonts/pixeltype.ttf', 40)
 clock = pygame.time.Clock()
 game_active = True
 start_time = 0
-# creating text
-text_font = pygame.font.Font('fonts/pixeltype.ttf', 40)
+score = 0
+
+# Add sound to game
+# bg_music = pygame.mixer.Sound('audio/music.wav')
+# bg_music.play(loops = -1)
+
+# Groups
+player = pygame.sprite.GroupSingle()
+player.add(Player())
+
+obstacle_group = pygame.sprite.Group()
+background_group = pygame.sprite.Group()
+missile_group = pygame.sprite.Group()
 
 # Create surface and rect for game objects
 sky_surf = pygame.image.load('images/background/sky.png').convert()
 ground_surf = pygame.image.load('images/background/ground_2.png').convert()
 
-# we use .conver_alph() to speed up the game
-hero_surf = pygame.image.load('images/hero/kickass_left.png').convert_alpha()
-hero_rect = hero_surf.get_rect(midbottom = (150,450))
-
-# obstacles enemies
-little_enemy_surf = pygame.image.load('images/enemy/enemy_right_small.png').convert_alpha()
-# enemy_rect = enemy_surf.get_rect(midbottom = (900, 450))
-
-# Big enemy
-big_enemy_surf = pygame.image.load('images/enemy/enemy_right_big.png').convert_alpha()
-big_enemy_list = []
-littele_enemy_list = []
-
-# score_surf = text_font.render('Lets Kick some Ass', False, (64,64,64))
-# score_rect = score_surf.get_rect(topleft = (180,70))
-
 # continue the game after gameover
 cont_surf = text_font.render('Press space to continue or Q to quit', False, (64,64,64))
 cont_rect = cont_surf.get_rect(center = (400, 400))
 
-# creating player properties
-hero_gravity = 0
-
-player_avatar_surf = pygame.image.load('images/hero/kickass_left.png').convert_alpha()
+player_avatar_surf = pygame.image.load('images/hero/kickass_right_1.png').convert_alpha()
 player_avater_surf = pygame.transform.rotozoom(player_avatar_surf, 0, 2) # scaling & rotating
 player_avatar_rect = player_avatar_surf.get_rect(center = (400,250))
 
-# Creating spaceships
-spaceship_surf = pygame.image.load('images/spaceships/spaceship.png').convert_alpha()
-spaceship_list = []
-
-# Create sattelites
-sattelite_surf = pygame.image.load('images/spaceships/sattelite.png').convert_alpha()
-sattelite_list = []
-
-# create lazer
-lazer_surf = pygame.image.load('images/fire/lazer_right.png').convert_alpha()
-lazer_rect = lazer_surf.get_rect(center = (hero_rect.right-5, hero_rect.y+40))
-lazer_shoot = False
-
 #Timer
 obstacle_timer = pygame.USEREVENT + 1
-pygame.time.set_timer(obstacle_timer, 1600)
+background_timer = pygame.USEREVENT + 3
+pygame.time.set_timer(obstacle_timer, 1700)
+pygame.time.set_timer(background_timer, 1300)
 
-# Game loop
+face_right = False
+face_left = False
+fire_enable = False
+
+# Starting the Main game loop
 while True:
     # check if user close the game
     for event in pygame.event.get():
@@ -123,80 +113,68 @@ while True:
             exit()
 
         if game_active:
-            if event.type == pygame.MOUSEBUTTONDOWN:
-                if hero_rect.collidepoint(event.pos) and hero_rect.bottom >= 450:
-                    hero_gravity = -22
+            if event.type == obstacle_timer:
+                enemy_choice = choice(['little_enemy','little_enemy','little_enemy','big_enemy'])
+                obstacle_group.add(Obstacle(enemy_choice))
+                background_choice = randint(0,100)
+                if 30 < background_choice < 50:
+                    background_group.add(Background('sattelite'))
+                elif 70 < background_choice < 90:
+                    background_group.add(Background('spachship'))
 
             if event.type == pygame.KEYDOWN:
-                if event.key == pygame.K_SPACE and hero_rect.bottom >= 450:
-                    hero_gravity = -22
+                if not face_left and not face_right:
+                    fire_enable = False
+                if event.key == pygame.K_p and fire_enable:
+                    print(face_left, face_right)
+                    missile_group.add(Missile(player.sprite.rect.x, player.sprite.rect.y, face_left, face_right))
 
-            if event.type == pygame.KEYDOWN:
-                if event.key == pygame.K_q:
-                    hero_rect.x -= 10
-
-            if event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_e:
-                    hero_rect.x += 10
+                    face_right = True
+                    fire_enable = True
 
-            if event.type == pygame.KEYDOWN:
-                if event.key == pygame.K_p:
-                    lazer_shoot = True
+                if event.key == pygame.K_q:
+                    face_left = True
+                    fire_enable = True
+
+            if event.type == pygame.KEYUP:
+                if event.key == pygame.K_e:
+                    face_right = False
+
+            if event.type == pygame.KEYUP:
+                if event.key == pygame.K_q:
+                    face_left = False
         else:
             if event.type == pygame.KEYDOWN and event.key == pygame.K_SPACE:
                 game_active = True
                 start_time = pygame.time.get_ticks()//100
-            elif event.type == pygame.KEYDOWN and event.key == pygame.K_q:
+                face_left = False
+                face_right = False
+                fire_enable = False
+
+            if event.type == pygame.KEYDOWN and event.key == pygame.K_q:
                 pygame.quit()
                 exit()
 
-        if event.type == obstacle_timer and game_active:
-            num = randint(0,100)
-            print(f"num: {num}")
-            if   10 < num < 50:
-                littele_enemy_list.append(little_enemy_surf.get_rect(bottomright = (randint(900,1000),450)))
-            if 70 < num < 90:
-                big_enemy_list.append(big_enemy_surf.get_rect(bottomright = (randint(1000,1500),450)))
-            if 50 < num < 70:
-                print("spawn sattelite")
-                sattelite_list.append(sattelite_surf.get_rect(center = (randint(1000,1500), num)))
-            if 90 < num < 100:
-                print("spawn spaceship")
-                spaceship_list.append(spaceship_surf.get_rect(center = (randint(-300, -100), num)))
-
     if game_active:
-        # Other game logic and rendering code...
+
         screen.blit(sky_surf,(0,0))
         screen.blit(ground_surf,(0,380))
         current_score = display_score()
 
-        # Handle ground obstacle and flying object
-        big_enemy_list = obstable_movment(big_enemy_list, big_enemy_surf, 1)
-        littele_enemy_list = obstable_movment(littele_enemy_list, little_enemy_surf, 3)
-        sattelite_list = obstable_movment(sattelite_list, sattelite_surf, 1)
-        spaceship_list = obstable_movment(spaceship_list, spaceship_surf, -3)
+        player.draw(screen)
+        player.update(face_left , face_right)
 
-        #move lazer
-        if (lazer_shoot):
-            screen.blit(lazer_surf, lazer_rect)
-            lazer_rect.x += 5
-            if(lazer_rect.x > 900):
-                lazer_shoot = False
-                lazer_rect.x = hero_rect.right
+        missile_group.draw(screen)
+        missile_group.update()
 
+        obstacle_group.draw(screen)
+        obstacle_group.update()
 
-        # Handle the Hero movement print and collision
-        hero_gravity += 1
-        hero_rect.y += hero_gravity
-        if hero_rect.bottom >= 450:
-            hero_rect.bottom = 450
-        screen.blit(hero_surf, hero_rect)
+        background_group.draw(screen)
+        background_group.update()
 
-        # check for collision
-        # if enemy_rect.colliderect(hero_rect):
-        #     # game_active = False
-        #     pass
-        game_active = collisions(hero_rect, big_enemy_list) and collisions(hero_rect, littele_enemy_list)
+        game_active = collision_sprite()
 
     else:
         with open('scores/best_score.txt', 'r') as fr:
@@ -207,16 +185,6 @@ while True:
 
         # Display the end game screen
         display_end(current_score)
-
-        # Return player to start point
-        hero_rect.midbottom = (150,450)
-        hero_gravity = 0
-        
-        # Clear all lists for new start
-        littele_enemy_list.clear()
-        big_enemy_list.clear()
-        sattelite_list.clear()
-        spaceship_list.clear()
 
     # update the screen
     pygame.display.update()
